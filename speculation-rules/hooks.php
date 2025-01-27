@@ -6,10 +6,11 @@
  * @since 1.0.0
  */
 
-// Exit if accessed directly.
+// @codeCoverageIgnoreStart
 if ( ! defined( 'ABSPATH' ) ) {
-	exit;
+	exit; // Exit if accessed directly.
 }
+// @codeCoverageIgnoreEnd
 
 /**
  * Prints the speculation rules.
@@ -19,30 +20,38 @@ if ( ! defined( 'ABSPATH' ) ) {
  * @since 1.0.0
  */
 function plsr_print_speculation_rules(): void {
-	$rules = plsr_get_speculation_rules();
-	if ( empty( $rules ) ) {
+	// Skip speculative loading for logged-in users.
+	if ( is_user_logged_in() ) {
 		return;
 	}
 
-	// This workaround is needed for WP 6.4. See <https://core.trac.wordpress.org/ticket/60320>.
-	$needs_html5_workaround = (
-		! current_theme_supports( 'html5', 'script' ) &&
-		version_compare( (string) strtok( (string) get_bloginfo( 'version' ), '-' ), '6.4', '>=' ) &&
-		version_compare( (string) strtok( (string) get_bloginfo( 'version' ), '-' ), '6.5', '<' )
-	);
-	if ( $needs_html5_workaround ) {
-		$backup_wp_theme_features = $GLOBALS['_wp_theme_features'];
-		add_theme_support( 'html5', array( 'script' ) );
+	// Skip speculative loading for sites without pretty permalinks, unless explicitly enabled.
+	if ( ! (bool) get_option( 'permalink_structure' ) ) {
+		/**
+		 * Filters whether speculative loading should be enabled even though the site does not use pretty permalinks.
+		 *
+		 * Since query parameters are commonly used by plugins for dynamic behavior that can change state, ideally any
+		 * such URLs are excluded from speculative loading. If the site does not use pretty permalinks though, they are
+		 * impossible to recognize. Therefore speculative loading is disabled by default for those sites.
+		 *
+		 * For site owners of sites without pretty permalinks that are certain their site is not using such a pattern,
+		 * this filter can be used to still enable speculative loading at their own risk.
+		 *
+		 * @since 1.4.0
+		 *
+		 * @param bool $enabled Whether speculative loading is enabled even without pretty permalinks.
+		 */
+		$enabled = (bool) apply_filters( 'plsr_enabled_without_pretty_permalinks', false );
+
+		if ( ! $enabled ) {
+			return;
+		}
 	}
 
 	wp_print_inline_script_tag(
-		(string) wp_json_encode( $rules ),
+		(string) wp_json_encode( plsr_get_speculation_rules() ),
 		array( 'type' => 'speculationrules' )
 	);
-
-	if ( $needs_html5_workaround ) {
-		$GLOBALS['_wp_theme_features'] = $backup_wp_theme_features; // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited
-	}
 }
 add_action( 'wp_footer', 'plsr_print_speculation_rules' );
 
